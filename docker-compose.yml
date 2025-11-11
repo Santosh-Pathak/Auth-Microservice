@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7
+    container_name: auth_mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: auth_microservice
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/auth_microservice --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - auth_network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: auth_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - auth_network
+
+  # Auth Microservice
+  auth_service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auth_service
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGODB_URI: mongodb://mongodb:27017/auth_microservice
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    env_file:
+      - .env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - auth_network
+    volumes:
+      - ./logs:/app/logs
+
+networks:
+  auth_network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  redis_data:
